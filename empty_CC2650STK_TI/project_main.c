@@ -140,6 +140,7 @@ Void sensorTaskFxn(UArg arg0, UArg arg1) {
           System_abort("Error Initializing I2C\n");
        }
 
+
           // i2c-viesteille lähetys- ja vastaanottopuskurit
           uint8_t txBuffer[1];
           uint8_t rxBuffer[2];
