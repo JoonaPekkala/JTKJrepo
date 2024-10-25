@@ -70,16 +70,13 @@ uint16_t opt3001_get_status(I2C_Handle *i2c) {
 double opt3001_get_data(I2C_Handle *i2c) {
 
     // JTKJ: Tehtävä 2. Muokkaa funktiota niin että se palauttaa mittausarvon lukseina
-    // JTKJ: Exercise 2. Complete this function to return the measured value as lux
 
-	double lux = -1.0; // return value of the function
-    // JTKJ: Find out the correct buffer sizes (n) with this sensor?
+    double lux = -1.0; // Palautusarvo
 
     uint8_t txBuffer[1];
     uint8_t rxBuffer[2];
 
     // i2c-viestirakenne
-
     I2C_Transaction i2cMessage;
     i2cMessage.slaveAddress = Board_OPT3001_ADDR;
     txBuffer[0] = OPT3001_REG_RESULT;      // Rekisterin osoite lähetyspuskuriin
@@ -89,36 +86,37 @@ double opt3001_get_data(I2C_Handle *i2c) {
     i2cMessage.readCount = 2;       // Vastaanotetaan 2 tavua
 
     // Onko data valmis?
+    if (opt3001_get_status(i2c) & OPT3001_DATA_READY) {
 
-	if (opt3001_get_status(&i2c) & OPT3001_DATA_READY) {
-	    // Luetaan data i2c väylällä
-		if (I2C_transfer(*i2c, &i2cMessage)) {
-		    uint16_t reg_0 = rxBuffer[0];
-		    reg_0 = reg_0 << 8;
-		    uint16_t reg_1 = reg_0 | rxBuffer[1];
+        // Luetaan data i2c väylällä
+        if (I2C_transfer(*i2c, &i2cMessage)) {
 
-		    uint8_t ryhma1 = reg_1 >> 12;
-		    uint8_t ryhma2 = reg_1 & (MASK_E);
+            // Arvo rekisteristä
+            uint16_t reg_0 = rxBuffer[0];
+            reg_0 = reg_0 << 8;
+            uint16_t reg_1 = reg_0 | rxBuffer[1];
 
-		    // JTKJ: Here the conversion from register value to lux
+            // Lasketaan luxit
+            uint8_t ryhma1 = reg_1 >> 12;
+            uint8_t ryhma2 = reg_1 & (MASK_E);
+            lux = 0.01 * pow(2, ryhma1) * ryhma2;
 
-		    float lux = 0.01 * pow(2, ryhma1) * ryhma2;
+            // Testaa sprintf-muotoilua ja tulosta se konsoliin
+            char lux_str[32];
+            sprintf(lux_str, "Arvo lukseina: %.2f\n", lux);
+            System_printf("%s", lux_str);
+            System_flush();
 
-		    // Luxit tiedoksi konsoli-ikkunaan
-		    System_printf("Tässä arvosi: %f\n", lux);
-		    System_flush();
 
+        } else {
+            System_printf("OPT3001: Data read failed!\n");
+            System_flush();
+        }
 
-		} else {
+    } else {
+        System_printf("OPT3001: Data not ready!\n");
+        System_flush();
+    }
 
-			System_printf("OPT3001: Data read failed!\n");
-			System_flush();
-		}
-
-	} else {
-		System_printf("OPT3001: Data not ready!\n");
-		System_flush();
-	}
-
-	return lux;
+    return lux; // Palautetaan mitattu arvo
 }
