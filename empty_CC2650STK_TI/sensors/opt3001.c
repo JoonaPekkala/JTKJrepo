@@ -67,7 +67,8 @@ uint16_t opt3001_get_status(I2C_Handle *i2c) {
 
 /**************** JTKJ: DO NOT MODIFY ANYTHING ABOVE THIS LINE ****************/
 
-double opt3001_get_data(I2C_Handle *i2c) {
+double opt3001_get_data(I2C_Handle *i2c)
+{
 
     // JTKJ: Tehtävä 2. Muokkaa funktiota niin että se palauttaa mittausarvon lukseina
 
@@ -85,12 +86,14 @@ double opt3001_get_data(I2C_Handle *i2c) {
     i2cMessage.readBuf = rxBuffer;  // Vastaanottopuskurin asetus
     i2cMessage.readCount = 2;       // Vastaanotetaan 2 tavua
 
+
+
     // Onko data valmis?
-    if (opt3001_get_status(i2c) & OPT3001_DATA_READY) {
-
+    if (opt3001_get_status(i2c) & OPT3001_DATA_READY)
+    {
         // Luetaan data i2c väylällä
-        if (I2C_transfer(*i2c, &i2cMessage)) {
-
+        if (I2C_transfer(*i2c, &i2cMessage))
+        {
             // Arvo rekisteristä
             uint16_t reg_0 = rxBuffer[0];
             reg_0 = reg_0 << 8;
@@ -101,19 +104,18 @@ double opt3001_get_data(I2C_Handle *i2c) {
             uint8_t ryhma2 = reg_1 & (MASK_E);
             lux = 0.01 * pow(2, ryhma1) * ryhma2;
 
-            // Testaa sprintf-muotoilua ja tulosta se konsoliin
-            char lux_str[32];
-            sprintf(lux_str, "Arvo lukseina: %.2f\n", lux);
-            System_printf("%s", lux_str);
-            System_flush();
+            // Tulostetaan data lukseina konsoliin
+            printf("Data lukseina: %.2f\n", lux);
 
-
-        } else {
+        }
+        else
+        {
             System_printf("OPT3001: Data read failed!\n");
             System_flush();
         }
-
-    } else {
+    }
+    else
+    {
         System_printf("OPT3001: Data not ready!\n");
         System_flush();
     }
