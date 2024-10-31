@@ -7,10 +7,12 @@
 #include <xdc/runtime/System.h>
 
 /* BIOS Header files */
+
 #include <ti/sysbios/BIOS.h>
 #include <ti/sysbios/knl/Clock.h>
 #include <ti/sysbios/knl/Task.h>
 #include <ti/drivers/PIN.h>
+#include <ti/drivers/i2c/I2CCC26XX.h>
 #include <ti/drivers/pin/PINCC26XX.h>
 #include <ti/drivers/I2C.h>
 #include <ti/drivers/Power.h>
@@ -19,7 +21,7 @@
 
 /* Board Header files */
 #include "Board.h"
-#include "sensors/opt3001.h"
+#include "sensors/mpu9250.h"
 
 /* Task */
 #define STACKSIZE 2048
@@ -39,6 +41,10 @@ static PIN_State buttonState;
 static PIN_Handle ledHandle;
 static PIN_State ledState;
 
+// MPU power pin global variables
+static PIN_Handle hMpuPin;
+static PIN_State  MpuPinState;
+
 
 PIN_Config buttonConfig[] =
 {
@@ -51,6 +57,21 @@ PIN_Config ledConfig[] =
    Board_LED0 | PIN_GPIO_OUTPUT_EN | PIN_GPIO_LOW | PIN_PUSHPULL | PIN_DRVSTR_MAX,
    PIN_TERMINATE
 };
+
+// MPU power pin
+static PIN_Config MpuPinConfig[] =
+{
+    Board_MPU_POWER  | PIN_GPIO_OUTPUT_EN | PIN_GPIO_HIGH | PIN_PUSHPULL | PIN_DRVSTR_MAX,
+    PIN_TERMINATE
+};
+
+// MPU uses its own I2C interface
+static const I2CCC26XX_I2CPinCfg i2cMPUCfg =
+{
+    .pinSDA = Board_I2C0_SDA1,
+    .pinSCL = Board_I2C0_SCL1
+};
+
 
 // Vaihdetaan led-pinnin tilaa negaatiolla
 void buttonFxn(PIN_Handle handle, PIN_Id pinId)
@@ -122,72 +143,80 @@ Void uartTaskFxn(UArg arg0, UArg arg1)
 
 Void sensorTaskFxn(UArg arg0, UArg arg1)
 {
+    float ax, ay, az, gx, gy, gz;
 
-    //Alustetaan i2c väylä taskille
-    I2C_Handle      i2c;
-    I2C_Params      i2cParams;
+    //Alustetaan i2cMPU väylä taskille
+    I2C_Handle      i2cMPU;
+    I2C_Params      i2cMPUParams;
     I2C_Transaction i2cMessage;
 
-    System_printf("sensorTaskFxn käynnissä\n");
+    // i2cMPU väylä taskin käyttöön
+    I2C_Params_init(&i2cMPUParams);
+    i2cMPUParams.bitRate = I2C_400kHz;
+    // Note the different configuration below
+    i2cMPUParams.custom = (uintptr_t)&i2cMPUCfg;
+
+    // MPU power on
+    PIN_setOutputValue(hMpuPin,Board_MPU_POWER, Board_MPU_POWER_ON);
+
+    // Wait 100ms for the MPU sensor to power up
+    Task_sleep(100000 / Clock_tickPeriod);
+    System_printf("MPU9250: Power ON\n");
     System_flush();
 
-    // i2c väylä taskin käyttöön
-    I2C_Params_init(&i2cParams);
-    i2cParams.bitRate = I2C_400kHz;
-    i2c = I2C_open(Board_I2C0, &i2cParams);
-    if (i2c == NULL)
-    {
-      System_abort("Error Initializing I2C\n");
+    // MPU open i2c
+    i2cMPU = I2C_open(Board_I2C, &i2cMPUParams);
+    if (i2cMPU == NULL) {
+        System_abort("Error Initializing I2CMPU\n");
     }
 
-    // i2c-viesteille lähetys- ja vastaanottopuskurit
-    uint8_t txBuffer[1];
-    uint8_t rxBuffer[2];
+    // MPU setup and calibration
+    System_printf("MPU9250: Setup and calibration...\n");
+    System_flush();
 
-    i2cMessage.slaveAddress = Board_OPT3001_ADDR;
-    txBuffer[0] = OPT3001_REG_RESULT;              // Rekisterin osoite lähetyspuskuriin
-    i2cMessage.writeBuf = txBuffer;                // Lähetyspuskurin asetus
-    i2cMessage.writeCount = 1;                     // Lähetetään 1 tavu
-    i2cMessage.readBuf = rxBuffer;                 // Vastaanottopuskurin asetus
-    i2cMessage.readCount = 2;                      // Vastaanotetaan 2 tavua
+    mpu9250_setup(&i2cMPU);
 
+    System_printf("MPU9250: Setup and calibration OK\n");
+    System_flush();
 
-    //Sensorin alustus ja 100ms viive
-    Task_sleep(100000 / Clock_tickPeriod);
-    opt3001_setup(&i2c);
+    // i2cMPU-viesteille lähetys- ja vastaanottopuskurit
+    // uint8_t txBuffer[1];
+    // uint8_t rxBuffer[2];
+
+    // i2cMessage.slaveAddress = Board_MPU9250_ADDR;
+    // txBuffer[0] = ACCEL_XOUT_H;              // Rekisterin osoite lähetyspuskuriin
+    // i2cMessage.writeBuf = txBuffer;                // Lähetyspuskurin asetus
+    // i2cMessage.writeCount = 1;                     // Lähetetään 1 tavu
+    // i2cMessage.readBuf = rxBuffer;                 // Vastaanottopuskurin asetus
+    // i2cMessage.readCount = 2;                      // Vastaanotetaan 2 tavua
 
     while (1)
     {
-        if (I2C_transfer(i2c, &i2cMessage))
-        {
-        //Lue sensorilta dataa ja tulosta se Debug-ikkunaan merkkijonona
-            double data = opt3001_get_data(&i2c);
-                if (data >= 0)
-                {
-                    // Luetaan rekisteristä raaka-data
-                    uint16_t reg_0 = rxBuffer[0];
-                    reg_0 = reg_0 << 8;
-                    uint16_t reg_1 = reg_0 | rxBuffer[1];
+        // if (I2C_transfer(i2cMPU, &i2cMessage))
+        // {
+        // Lue sensorilta dataa ja tulosta se Debug-ikkunaan merkkijonona
+
+            // Luetaan dataa
+            System_printf("MPU9250: Luetaan dataa...\n");
+            System_flush();
+
+            double data = mpu9250_get_data(&i2cMPU, &ax, &ay, &az, &gx, &gy, &gz);
+
+            Task_sleep(1000000 / Clock_tickPeriod);
+
+            System_printf("Data: %f\n", data);
+            System_flush;
 
 
-                    // Tulostetaan raaka-data binäärinä konsoliin
-                    int i;
-                    System_printf("Sensortaskin raakadata: ");
-                    for (i = 15; i >= 0; i--)
-                    {
-                        System_printf("%d", (reg_1 >> i) & 1);
-                        if (i % 4 == 0 && i != 0)
-                        {
-                            System_printf(" ");
-                        }
-                    }
-                    System_printf("\n");
-                    System_flush();
 
-                    //Tallenna mittausarvo globaaliin muuttujaan. Muista tilamuutos
-                    ambientLight = data;
-                    programState = DATA_READY;
-                }
+
+            // data luettu
+            System_printf("MPU9250: data luettu...\n");
+            System_flush();
+
+            //Tallenna mittausarvo globaaliin muuttujaan. Muista tilamuutos
+            //programState = DATA_READY;
+
 
 
         // Just for sanity check for exercise, you can comment this out
@@ -196,7 +225,6 @@ Void sensorTaskFxn(UArg arg0, UArg arg1)
 
         // Once per second, you can modify this
         Task_sleep(100000 / Clock_tickPeriod);
-        }
     }
 }
 
@@ -236,6 +264,13 @@ int main(void)
     if (PIN_registerIntCb(buttonHandle, &buttonFxn) != 0)
     {
        System_abort("Error registering button callback function");
+    }
+
+    // Open MPU power pin
+    hMpuPin = PIN_open(&MpuPinState, MpuPinConfig);
+    if (hMpuPin == NULL)
+    {
+     System_abort("Pin open failed!");
     }
 
     /* Task */

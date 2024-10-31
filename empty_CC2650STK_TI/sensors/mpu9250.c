@@ -495,20 +495,27 @@ void MPU9250SelfTest(float * destination) // Should return percent deviation fro
 
 /**************** JTKJ: DO NOT MODIFY ANYTHING ABOVE THIS LINE ****************/
 
-void mpu9250_get_data(I2C_Handle *i2c, float *ax, float *ay, float *az, float *gx, float *gy, float *gz) {
+double mpu9250_get_data(I2C_Handle *i2cMPU, float *ax, float *ay, float *az, float *gx, float *gy, float *gz) {
 
-	uint8_t rawData[14]; // Register data
+	uint8_t rawData[6]; // Register data
 
    	// Read register values into array rawData
-	readByte( ACCEL_XOUT_H, 14, rawData);
+	readByte( ACCEL_XOUT_H, 6, rawData);
 
 	// JTKJ: Convert the 8-bit values (the _h and _l registers) in the array rawData into 16-bit values
-	// int16_t nx = ...
-	// int16_t ny = ...
-	// int16_t nz = ...
-	// int16_t mx = ...
-	// int16_t my = ...
-	// int16_t mz = ...
+	// Oletetaan, että rawData sisältää rekisteriarvot lukemisen jälkeen, kuten kuvassa
+
+	// Akselitietojen tallentaminen 16-bittisiin muuttujin
+	int16_t nx = (int16_t)((rawData[0] << 8) | rawData[1]);
+	int16_t ny = (int16_t)((rawData[2] << 8) | rawData[3]);
+	int16_t nz = (int16_t)((rawData[4] << 8) | rawData[5]);
+
+	// Gyroskoopin tietojen tallentaminen 16-bittisiin muuttujin
+	readByte(GYRO_XOUT_H, 6, rawData);
+	int16_t mx = (int16_t)((rawData[0] << 8) | rawData[1]);
+	int16_t my = (int16_t)((rawData[2] << 8) | rawData[3]);
+	int16_t mz = (int16_t)((rawData[4] << 8) | rawData[5]);
+
 	
 	// JTKJ: Convert the 16-bit register values into g 
 	//       Each nx, ny and nz below is represents the 16-bit values for each axis separately
@@ -516,8 +523,18 @@ void mpu9250_get_data(I2C_Handle *i2c, float *ax, float *ay, float *az, float *g
 	// *ay = (float)ny*aRes - accelBias[1];
 	// *az = (float)nz*aRes - accelBias[2];
 
+    *ax = (nx * aRes) - accelBias[0];
+    *ay = (ny * aRes) - accelBias[1];
+    *az = (nz * aRes) - accelBias[2];
+
 	// JTKJ: Convert g values mx, my, mz into degrees per second
 	// *gx = (float)mx*gRes;
 	// *gy = (float)my*gRes;
 	// *gz = (float)mz*gRes;
+
+    *gx = (float)mx * gRes;
+    *gy = (float)my * gRes;
+    *gz = (float)mz * gRes;
+
+    return *ax, *ay, *az, *gx, *gz, *gy;
 }
