@@ -28,12 +28,11 @@
 Char sensorTaskStack[STACKSIZE];
 Char uartTaskStack[STACKSIZE];
 
-// JTKJ: Tehtävä 3. Tilakoneen esittely
-enum state { WAITING=1, DATA_READY };
-enum state programState = WAITING;
+// Tilakoneen esittely
+// TO DO
 
-// JTKJ: Tehtävä 3. Valoisuuden globaali muuttuja
-double ambientLight = -1000.0;
+// Globaalit muuttujat
+float ax, ay, az, gx, gy, gz;
 
 //painonappien ja ledien RTOS-muuttujat ja alustus
 static PIN_Handle buttonHandle;
@@ -109,28 +108,29 @@ Void uartTaskFxn(UArg arg0, UArg arg1)
 
     while (1)
     {
-        char str[16];
-
-        // Kun tila on oikea, tulosta sensoridata merkkijonossa debug-ikkunaan. Muista tilamuutos
-        if (programState == DATA_READY)
-        {
-            int kokonaisosa = (int)ambientLight;
-            int desimaaliosa = (int)ambientLight;
-            desimaaliosa = desimaaliosa < 0 ? -desimaaliosa : desimaaliosa;
-
-            // Luodaan ambientLightistä merkkijono
-            sprintf(str, "%d.%02d\n\r", kokonaisosa, desimaaliosa);
-
-            // Merkkijonon tulostus
-            System_printf("UARTin ambientLight: %s\n", str);
-            System_flush();
-
-            // Odotus tilaan
-            programState = WAITING;
-        }
+        /*char str[16];
+        *
+        * Kun tila on oikea, tulosta sensoridata merkkijonossa debug-ikkunaan. Muista tilamuutos
+        * if (programState == DATA_READY)
+        *{
+        *   int kokonaisosa = (int)ambientLight;
+        *  int desimaaliosa = (int)ambientLight;
+        * desimaaliosa = desimaaliosa < 0 ? -desimaaliosa : desimaaliosa;
+        *
+        *    // Luodaan ambientLightistä merkkijono
+        *    sprintf(str, "%d.%02d\n\r", kokonaisosa, desimaaliosa);
+        *
+        *    // Merkkijonon tulostus
+        *    System_printf("UARTin ambientLight: %s\n", str);
+        *    System_flush();
+        *
+        *    // Odotus tilaan
+        *    programState = WAITING;
+        *}
+        */
 
         // Lähetetään merkkijono UARTilla
-        UART_write(uart, str, strlen(str));
+        // UART_write(uart, str, strlen(str));
 
         // Just for sanity check for exercise, you can comment this out
         //System_printf("uartTask\n");
@@ -143,12 +143,10 @@ Void uartTaskFxn(UArg arg0, UArg arg1)
 
 Void sensorTaskFxn(UArg arg0, UArg arg1)
 {
-    float ax, ay, az, gx, gy, gz;
 
     //Alustetaan i2cMPU väylä taskille
     I2C_Handle      i2cMPU;
     I2C_Params      i2cMPUParams;
-    I2C_Transaction i2cMessage;
 
     // i2cMPU väylä taskin käyttöön
     I2C_Params_init(&i2cMPUParams);
@@ -174,48 +172,31 @@ Void sensorTaskFxn(UArg arg0, UArg arg1)
     System_printf("MPU9250: Setup and calibration...\n");
     System_flush();
 
+    Task_sleep(100000 / Clock_tickPeriod);
     mpu9250_setup(&i2cMPU);
 
     System_printf("MPU9250: Setup and calibration OK\n");
     System_flush();
 
-    // i2cMPU-viesteille lähetys- ja vastaanottopuskurit
-    // uint8_t txBuffer[1];
-    // uint8_t rxBuffer[2];
-
-    // i2cMessage.slaveAddress = Board_MPU9250_ADDR;
-    // txBuffer[0] = ACCEL_XOUT_H;              // Rekisterin osoite lähetyspuskuriin
-    // i2cMessage.writeBuf = txBuffer;                // Lähetyspuskurin asetus
-    // i2cMessage.writeCount = 1;                     // Lähetetään 1 tavu
-    // i2cMessage.readBuf = rxBuffer;                 // Vastaanottopuskurin asetus
-    // i2cMessage.readCount = 2;                      // Vastaanotetaan 2 tavua
-
     while (1)
     {
-        // if (I2C_transfer(i2cMPU, &i2cMessage))
-        // {
         // Lue sensorilta dataa ja tulosta se Debug-ikkunaan merkkijonona
 
-            // Luetaan dataa
-            System_printf("MPU9250: Luetaan dataa...\n");
-            System_flush();
+        // Luetaan dataa
+        System_printf("MPU9250: Luetaan dataa...\n");
+        System_flush();
 
-            double data = mpu9250_get_data(&i2cMPU, &ax, &ay, &az, &gx, &gy, &gz);
+        mpu9250_get_data(&i2cMPU, &ax, &ay, &az, &gx, &gy, &gz);
 
-            Task_sleep(1000000 / Clock_tickPeriod);
-
-            System_printf("Data: %f\n", data);
-            System_flush;
+        printf("Kiihtyvyys: X: %.2f g, Y: %.2f g, Z: %.2f g\n", ax, ay, az);
+        printf("Gyroskooppi: X: %.2f °/s, Y: %.2f °/s, Z: %.2f °/s\n", gx, gy, gz);
 
 
+        System_printf("MPU9250: data luettu...\n");
+        System_flush();
 
-
-            // data luettu
-            System_printf("MPU9250: data luettu...\n");
-            System_flush();
-
-            //Tallenna mittausarvo globaaliin muuttujaan. Muista tilamuutos
-            //programState = DATA_READY;
+        //Tallenna mittausarvo globaaliin muuttujaan. Muista tilamuutos
+        //TO DO
 
 
 
@@ -228,7 +209,8 @@ Void sensorTaskFxn(UArg arg0, UArg arg1)
     }
 }
 
-int main(void)
+
+Int main(void)
 {
 
     // Task variables
