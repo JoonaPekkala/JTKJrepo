@@ -1,6 +1,7 @@
 /* C Standard library */
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 
 /* XDCtools files */
 #include <xdc/std.h>
@@ -29,10 +30,14 @@ Char sensorTaskStack[STACKSIZE];
 Char uartTaskStack[STACKSIZE];
 
 // Tilakoneen esittely
-// TO DO
+enum state { IDLE=1, READ_SENSOR, UPDATE };
+enum state myState = IDLE;
 
 // Globaalit muuttujat
 float ax, ay, az, gx, gy, gz;
+float thresholdVaaka = 0.7;
+float thresholdPysty = 1.1;
+
 
 //painonappien ja ledien RTOS-muuttujat ja alustus
 static PIN_Handle buttonHandle;
@@ -106,8 +111,8 @@ Void uartTaskFxn(UArg arg0, UArg arg1)
         System_abort("Error opening the UART");
     }
 
-    while (1)
-    {
+    //while (1)
+    //{
         /*char str[16];
         *
         * Kun tila on oikea, tulosta sensoridata merkkijonossa debug-ikkunaan. Muista tilamuutos
@@ -137,8 +142,8 @@ Void uartTaskFxn(UArg arg0, UArg arg1)
         //System_flush();
 
         // Once per second, you can modify this
-        Task_sleep(100000 / Clock_tickPeriod);
-    }
+        //Task_sleep(100000 / Clock_tickPeriod);
+    //}
 }
 
 Void sensorTaskFxn(UArg arg0, UArg arg1)
@@ -179,34 +184,47 @@ Void sensorTaskFxn(UArg arg0, UArg arg1)
     System_flush();
 
     while (1)
-    {
-        // Lue sensorilta dataa ja tulosta se Debug-ikkunaan merkkijonona
+        {
 
-        // Luetaan dataa
-        System_printf("MPU9250: Luetaan dataa...\n");
-        System_flush();
+            if (myState == READ_SENSOR) {
 
-        mpu9250_get_data(&i2cMPU, &ax, &ay, &az, &gx, &gy, &gz);
+                mpu9250_get_data(&i2cMPU, &ax, &ay, &az, &gx, &gy, &gz);
 
-        printf("Kiihtyvyys: X: %.2f g, Y: %.2f g, Z: %.2f g\n", ax, ay, az);
-        printf("Gyroskooppi: X: %.2f °/s, Y: %.2f °/s, Z: %.2f °/s\n", gx, gy, gz);
+                // Tarkista laitteen asento kiihtyvyysarvojen perusteella
+                if ((az > 0.5) || (az < -0.5)) {
+                    if (fabs(ax) > thresholdVaaka && fabs(ay) < thresholdVaaka && fabs(az) < thresholdPysty) {
+                        printf("- %.2f %.2f\n", ax, ay); // Tulostaa viivan
+                        System_flush();
+                    }
+                    else if (fabs(ay) > thresholdVaaka && fabs(ax) < thresholdVaaka && fabs(az) < thresholdPysty) {
+                        printf("- %.2f %.2f\n", ax, ay); // Tulostaa viivan
+                        System_flush();
+                    }
+                    else if (fabs(az) >= thresholdPysty) {
+                        printf(". %.2f\n", az); // Tulostaa pisteen
+                        System_flush();
+                    }
+
+                }
+                else {
+                    printf("Liikettä ei tunnistettu, yritä uudelleen! Tarkista anturin asento!\n");
+                    System_flush();
+                }
+
+            }
 
 
-        System_printf("MPU9250: data luettu...\n");
-        System_flush();
-
-        //Tallenna mittausarvo globaaliin muuttujaan. Muista tilamuutos
-        //TO DO
+            //Tallenna mittausarvo globaaliin muuttujaan. Muista tilamuutos
+            //TO DO
 
 
+            // Just for sanity check for exercise, you can comment this out
+            // System_printf("sensorTask\n");
+            // System_flush();
 
-        // Just for sanity check for exercise, you can comment this out
-        // System_printf("sensorTask\n");
-        // System_flush();
-
-        // Once per second, you can modify this
-        Task_sleep(100000 / Clock_tickPeriod);
-    }
+            // Once per second, you can modify this
+            Task_sleep(100000 / Clock_tickPeriod);
+        }
 }
 
 
