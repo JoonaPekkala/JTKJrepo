@@ -36,9 +36,8 @@ enum state myState = IDLE;
 // Globaalit muuttujat
 float ax, ay, az, gx, gy, gz;
 float thresholdVaaka = 0.7;
-float thresholdPysty = 1.1;
-
-
+float thresholdPysty = 1.5;
+char input[10];
 //painonappien ja ledien RTOS-muuttujat ja alustus
 static PIN_Handle buttonHandle;
 static PIN_State buttonState;
@@ -88,6 +87,9 @@ void buttonFxn(PIN_Handle handle, PIN_Id pinId)
 /* Task Functions */
 Void uartTaskFxn(UArg arg0, UArg arg1)
 {
+
+    char echo_msg[30];
+
     // UARTin alustus
     // UART-kirjaston asetukset
     UART_Handle uart;
@@ -111,39 +113,29 @@ Void uartTaskFxn(UArg arg0, UArg arg1)
         System_abort("Error opening the UART");
     }
 
-    //while (1)
-    //{
-        /*char str[16];
-        *
-        * Kun tila on oikea, tulosta sensoridata merkkijonossa debug-ikkunaan. Muista tilamuutos
-        * if (programState == DATA_READY)
-        *{
-        *   int kokonaisosa = (int)ambientLight;
-        *  int desimaaliosa = (int)ambientLight;
-        * desimaaliosa = desimaaliosa < 0 ? -desimaaliosa : desimaaliosa;
-        *
-        *    // Luodaan ambientLightistä merkkijono
-        *    sprintf(str, "%d.%02d\n\r", kokonaisosa, desimaaliosa);
-        *
-        *    // Merkkijonon tulostus
-        *    System_printf("UARTin ambientLight: %s\n", str);
-        *    System_flush();
-        *
-        *    // Odotus tilaan
-        *    programState = WAITING;
-        *}
-        */
+    while (1)
+    {
+        // Kun tila on oikea, tulosta sensoridata merkkijonossa debug-ikkunaan. Muista tilamuutos
+        if (myState == UPDATE)
+        {
+            // Vastaanotetaan 1 merkki kerrallaan input-muuttujaan
+            UART_read(uart, &input, 10);
 
-        // Lähetetään merkkijono UARTilla
-        // UART_write(uart, str, strlen(str));
+            // Lähetetään merkkijono takaisin
+            sprintf(echo_msg,"Received: %c\n",input);
+            UART_write(uart, echo_msg, strlen(echo_msg));
+
+            // Odotus tilaan
+            myState = IDLE;
+        }
 
         // Just for sanity check for exercise, you can comment this out
         //System_printf("uartTask\n");
         //System_flush();
 
         // Once per second, you can modify this
-        //Task_sleep(100000 / Clock_tickPeriod);
-    //}
+        Task_sleep(100000 / Clock_tickPeriod);
+    }
 }
 
 Void sensorTaskFxn(UArg arg0, UArg arg1)
@@ -185,42 +177,37 @@ Void sensorTaskFxn(UArg arg0, UArg arg1)
 
     while (1)
         {
+        mpu9250_get_data(&i2cMPU, &ax, &ay, &az, &gx, &gy, &gz);
 
-            if (myState == READ_SENSOR) {
-
-                mpu9250_get_data(&i2cMPU, &ax, &ay, &az, &gx, &gy, &gz);
-
-                // Tarkista laitteen asento kiihtyvyysarvojen perusteella
-                if ((az > 0.5) || (az < -0.5)) {
-                    if (fabs(ax) > thresholdVaaka && fabs(ay) < thresholdVaaka && fabs(az) < thresholdPysty) {
-                        printf("- %.2f %.2f\n", ax, ay); // Tulostaa viivan
-                        System_flush();
-                    }
-                    else if (fabs(ay) > thresholdVaaka && fabs(ax) < thresholdVaaka && fabs(az) < thresholdPysty) {
-                        printf("- %.2f %.2f\n", ax, ay); // Tulostaa viivan
-                        System_flush();
-                    }
-                    else if (fabs(az) >= thresholdPysty) {
-                        printf(". %.2f\n", az); // Tulostaa pisteen
-                        System_flush();
-                    }
-
-                }
-                else {
-                    printf("Liikettä ei tunnistettu, yritä uudelleen! Tarkista anturin asento!\n");
-                    System_flush();
-                }
-
+        // Tarkista laitteen asento kiihtyvyysarvojen perusteella
+        if ((az > 0.5) || (az < -0.5)) {
+            if (fabs(ax) > thresholdVaaka && fabs(ay) < thresholdVaaka && fabs(az) < thresholdPysty) {
+                printf("- %.2f %.2f\n", ax, ay); // Tulostaa viivan
+                snprintf(input, sizeof(input), "- %.2f %.2f \r\n", ax, ay);
+                System_flush();
+                myState = UPDATE;
             }
-
-
-            //Tallenna mittausarvo globaaliin muuttujaan. Muista tilamuutos
-            //TO DO
-
+            else if (fabs(ay) > thresholdVaaka && fabs(ax) < thresholdVaaka && fabs(az) < thresholdPysty) {
+                printf("- %.2f %.2f\n", ax, ay); // Tulostaa viivan
+                snprintf(input, sizeof(input), "- %.2f %.2f \r\n", ax, ay);
+                System_flush();
+                myState = UPDATE;
+            }
+            else if (fabs(az) >= thresholdPysty) {
+                printf(". %.2f\n", az); // Tulostaa pisteen
+                snprintf(input, sizeof(input), ". %.2f \r\n", az);
+                System_flush();
+                myState = UPDATE;
+            }
+        }
+        else {
+            printf("Liikettä ei tunnistettu, yritä uudelleen! Tarkista anturin asento!\n");
+            System_flush();
+        }
 
             // Just for sanity check for exercise, you can comment this out
-            // System_printf("sensorTask\n");
-            // System_flush();
+            //System_printf("sensorTask\n");
+            //System_flush();
 
             // Once per second, you can modify this
             Task_sleep(100000 / Clock_tickPeriod);
