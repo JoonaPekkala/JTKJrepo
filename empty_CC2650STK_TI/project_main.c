@@ -38,6 +38,7 @@ float ax, ay, az, gx, gy, gz;
 float thresholdVaaka = 0.7;
 float thresholdPysty = 1.5;
 char input[10];
+
 //painonappien ja ledien RTOS-muuttujat ja alustus
 static PIN_Handle buttonHandle;
 static PIN_State buttonState;
@@ -54,6 +55,13 @@ PIN_Config buttonConfig[] =
    Board_BUTTON0  | PIN_INPUT_EN | PIN_PULLUP | PIN_IRQ_NEGEDGE,
    PIN_TERMINATE
 };
+
+PIN_Config buttonConfig1[] =
+{
+   Board_BUTTON1  | PIN_INPUT_EN | PIN_PULLUP | PIN_IRQ_NEGEDGE,
+   PIN_TERMINATE
+};
+
 
 PIN_Config ledConfig[] =
 {
@@ -88,8 +96,6 @@ void buttonFxn(PIN_Handle handle, PIN_Id pinId)
 Void uartTaskFxn(UArg arg0, UArg arg1)
 {
 
-    char echo_msg[30];
-
     // UARTin alustus
     // UART-kirjaston asetukset
     UART_Handle uart;
@@ -115,15 +121,13 @@ Void uartTaskFxn(UArg arg0, UArg arg1)
 
     while (1)
     {
+
         // Kun tila on oikea, tulosta sensoridata merkkijonossa debug-ikkunaan. Muista tilamuutos
         if (myState == UPDATE)
         {
-            // Vastaanotetaan 1 merkki kerrallaan input-muuttujaan
-            UART_read(uart, &input, 10);
 
-            // Lähetetään merkkijono takaisin
-            sprintf(echo_msg,"Received: %c\n",input);
-            UART_write(uart, echo_msg, strlen(echo_msg));
+            // Tulos terminaaliin
+            UART_write(uart, input, strlen(input));
 
             // Odotus tilaan
             myState = IDLE;
@@ -183,19 +187,19 @@ Void sensorTaskFxn(UArg arg0, UArg arg1)
         if ((az > 0.5) || (az < -0.5)) {
             if (fabs(ax) > thresholdVaaka && fabs(ay) < thresholdVaaka && fabs(az) < thresholdPysty) {
                 printf("- %.2f %.2f\n", ax, ay); // Tulostaa viivan
-                snprintf(input, sizeof(input), "- %.2f %.2f \r\n", ax, ay);
+                snprintf(input, sizeof(input), "-\r\n");
                 System_flush();
                 myState = UPDATE;
             }
             else if (fabs(ay) > thresholdVaaka && fabs(ax) < thresholdVaaka && fabs(az) < thresholdPysty) {
                 printf("- %.2f %.2f\n", ax, ay); // Tulostaa viivan
-                snprintf(input, sizeof(input), "- %.2f %.2f \r\n", ax, ay);
+                snprintf(input, sizeof(input), "-\r\n");
                 System_flush();
                 myState = UPDATE;
             }
             else if (fabs(az) >= thresholdPysty) {
                 printf(". %.2f\n", az); // Tulostaa pisteen
-                snprintf(input, sizeof(input), ". %.2f \r\n", az);
+                snprintf(input, sizeof(input), ".\r\n");
                 System_flush();
                 myState = UPDATE;
             }
@@ -242,6 +246,12 @@ Int main(void)
 
     // Painonappi käyttöön ohjelmassa
     buttonHandle = PIN_open(&buttonState, buttonConfig);
+    if(!buttonHandle)
+    {
+       System_abort("Error initializing button pin\n");
+    }
+
+    buttonHandle = PIN_open(&buttonState, buttonConfig1);
     if(!buttonHandle)
     {
        System_abort("Error initializing button pin\n");
