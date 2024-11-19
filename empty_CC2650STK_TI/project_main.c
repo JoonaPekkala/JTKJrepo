@@ -30,7 +30,7 @@ Char sensorTaskStack[STACKSIZE];
 Char uartTaskStack[STACKSIZE];
 
 // Tilakoneen esittely
-enum state { IDLE=1, READ_SENSOR, UPDATE };
+enum state { IDLE=1, READ_UART, READ_SENSOR, UPDATE };
 enum state myState = IDLE;
 
 // Globaalit muuttujat
@@ -41,7 +41,9 @@ char input[10];
 
 //painonappien ja ledien RTOS-muuttujat ja alustus
 static PIN_Handle buttonHandle;
+static PIN_Handle button2Handle;
 static PIN_State buttonState;
+static PIN_State button2State;
 static PIN_Handle ledHandle;
 static PIN_State ledState;
 
@@ -56,12 +58,11 @@ PIN_Config buttonConfig[] =
    PIN_TERMINATE
 };
 
-PIN_Config buttonConfig1[] =
+PIN_Config button2Config[] =
 {
    Board_BUTTON1  | PIN_INPUT_EN | PIN_PULLUP | PIN_IRQ_NEGEDGE,
    PIN_TERMINATE
 };
-
 
 PIN_Config ledConfig[] =
 {
@@ -83,14 +84,37 @@ static const I2CCC26XX_I2CPinCfg i2cMPUCfg =
     .pinSCL = Board_I2C0_SCL1
 };
 
-
-// Vaihdetaan led-pinnin tilaa negaatiolla
+// Vaihdetaan led-pinnin tilaa negaatiolla ja siirrytään lukemaan sensorin dataa READ_SENSOR tilassa
 void buttonFxn(PIN_Handle handle, PIN_Id pinId)
 {
     uint_t pinValue = PIN_getOutputValue( Board_LED0 );
     pinValue = !pinValue;
     PIN_setOutputValue( ledHandle, Board_LED0, pinValue );
+
+    if (myState == IDLE)
+    {
+    myState = READ_SENSOR;
+    }
+    else
+    {
+        myState = IDLE;
+    }
+    Task_sleep(100000 / Clock_tickPeriod);
 }
+
+void button2Fxn(PIN_Handle handle, PIN_Id pinId)
+{
+    if (myState == READ_SENSOR)
+    {
+        printf(" Väli\n"); // Tulostaa väli
+        snprintf(input, sizeof(input), " \r\n\0");
+        System_flush();
+        myState = UPDATE;
+        Task_sleep(100000 / Clock_tickPeriod);
+    }
+
+}
+
 
 /* Task Functions */
 Void uartTaskFxn(UArg arg0, UArg arg1)
@@ -130,8 +154,10 @@ Void uartTaskFxn(UArg arg0, UArg arg1)
             UART_write(uart, input, strlen(input));
 
             // Odotus tilaan
-            myState = IDLE;
+            myState = READ_SENSOR;
         }
+
+
 
         // Just for sanity check for exercise, you can comment this out
         //System_printf("uartTask\n");
@@ -180,42 +206,51 @@ Void sensorTaskFxn(UArg arg0, UArg arg1)
     System_flush();
 
     while (1)
+    {
+        if (myState == READ_SENSOR)
         {
-        mpu9250_get_data(&i2cMPU, &ax, &ay, &az, &gx, &gy, &gz);
 
-        // Tarkista laitteen asento kiihtyvyysarvojen perusteella
-        if ((az > 0.5) || (az < -0.5)) {
-            if (fabs(ax) > thresholdVaaka && fabs(ay) < thresholdVaaka && fabs(az) < thresholdPysty) {
-                printf("- %.2f %.2f\n", ax, ay); // Tulostaa viivan
-                snprintf(input, sizeof(input), "-\r\n");
-                System_flush();
-                myState = UPDATE;
+            mpu9250_get_data(&i2cMPU, &ax, &ay, &az, &gx, &gy, &gz);
+
+            // Tarkista laitteen asento kiihtyvyysarvojen perusteella
+            if ((az > 0.5) || (az < -0.5))
+            {
+                if (fabs(ax) > thresholdVaaka && fabs(ay) < thresholdVaaka && fabs(az) < thresholdPysty)
+                {
+                    printf("- %.2f %.2f\n", ax, ay); // Tulostaa viivan
+                    snprintf(input, sizeof(input), "-\r\n\0");
+                    System_flush();
+                    myState = UPDATE;
+                }
+                else if (fabs(ay) > thresholdVaaka && fabs(ax) < thresholdVaaka && fabs(az) < thresholdPysty)
+                {
+                    printf("- %.2f %.2f\n", ax, ay); // Tulostaa viivan
+                    snprintf(input, sizeof(input), "-\r\n\0");
+                    System_flush();
+                    myState = UPDATE;
+                }
+                else if (fabs(az) >= thresholdPysty)
+                {
+                    printf(". %.2f\n", az); // Tulostaa pisteen
+                    snprintf(input, sizeof(input), ".\r\n\0");
+                    System_flush();
+                    myState = UPDATE;
+                }
             }
-            else if (fabs(ay) > thresholdVaaka && fabs(ax) < thresholdVaaka && fabs(az) < thresholdPysty) {
-                printf("- %.2f %.2f\n", ax, ay); // Tulostaa viivan
-                snprintf(input, sizeof(input), "-\r\n");
+
+            else
+            {
+                printf("Liikettä ei tunnistettu, yritä uudelleen! Tarkista anturin asento!\n");
                 System_flush();
-                myState = UPDATE;
             }
-            else if (fabs(az) >= thresholdPysty) {
-                printf(". %.2f\n", az); // Tulostaa pisteen
-                snprintf(input, sizeof(input), ".\r\n");
-                System_flush();
-                myState = UPDATE;
-            }
-        }
-        else {
-            printf("Liikettä ei tunnistettu, yritä uudelleen! Tarkista anturin asento!\n");
-            System_flush();
-        }
 
             // Just for sanity check for exercise, you can comment this out
             //System_printf("sensorTask\n");
             //System_flush();
 
-            // Once per second, you can modify this
-            Task_sleep(100000 / Clock_tickPeriod);
         }
+        Task_sleep(100000 / Clock_tickPeriod);
+    }
 }
 
 
@@ -251,14 +286,21 @@ Int main(void)
        System_abort("Error initializing button pin\n");
     }
 
-    buttonHandle = PIN_open(&buttonState, buttonConfig1);
-    if(!buttonHandle)
+    // Toinen nappi myös ohjelmaan
+    button2Handle = PIN_open(&button2State, button2Config);
+    if(!button2Handle)
     {
        System_abort("Error initializing button pin\n");
     }
 
     // Painonapille keskeytyksen käsittellijä
     if (PIN_registerIntCb(buttonHandle, &buttonFxn) != 0)
+    {
+       System_abort("Error registering button callback function");
+    }
+
+    // Toiselle painonapille myös keskeytyksen käsittellijä
+    if (PIN_registerIntCb(button2Handle, &button2Fxn) != 0)
     {
        System_abort("Error registering button callback function");
     }
