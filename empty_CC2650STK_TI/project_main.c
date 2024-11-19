@@ -30,7 +30,7 @@ Char sensorTaskStack[STACKSIZE];
 Char uartTaskStack[STACKSIZE];
 
 // Tilakoneen esittely
-enum state { IDLE=1, READ_UART, READ_SENSOR, UPDATE };
+enum state { IDLE=1, READ_SENSOR, UPDATE };
 enum state myState = IDLE;
 
 // Globaalit muuttujat
@@ -50,6 +50,7 @@ static PIN_State ledState;
 // MPU power pin global variables
 static PIN_Handle hMpuPin;
 static PIN_State  MpuPinState;
+
 
 
 PIN_Config buttonConfig[] =
@@ -156,8 +157,6 @@ Void uartTaskFxn(UArg arg0, UArg arg1)
             // Odotus tilaan
             myState = READ_SENSOR;
         }
-
-
 
         // Just for sanity check for exercise, you can comment this out
         //System_printf("uartTask\n");
