@@ -51,8 +51,6 @@ static PIN_State ledState;
 static PIN_Handle hMpuPin;
 static PIN_State  MpuPinState;
 
-
-
 PIN_Config buttonConfig[] =
 {
    Board_BUTTON0  | PIN_INPUT_EN | PIN_PULLUP | PIN_IRQ_NEGEDGE,
@@ -103,19 +101,28 @@ void buttonFxn(PIN_Handle handle, PIN_Id pinId)
     Task_sleep(100000 / Clock_tickPeriod);
 }
 
+// Tulostetaan välilyönti
 void button2Fxn(PIN_Handle handle, PIN_Id pinId)
 {
     if (myState == READ_SENSOR)
     {
-        printf(" Väli\n"); // Tulostaa väli
+        printf(" Väli\n");                              // Konsoliin tulostus, jotta debug helpompaa.
         snprintf(input, sizeof(input), " \r\n\0");
         System_flush();
         myState = UPDATE;
         Task_sleep(100000 / Clock_tickPeriod);
     }
-
 }
 
+// Funktio, joka tulostaa viestin konsoliin
+void uartCallBack(UART_Handle handle, void *rxBuf, size_t size)
+{
+    if (size > 0)
+    {
+        printf("Saatu: %s\n", (char *)rxBuf);
+        System_flush();
+    }
+}
 
 /* Task Functions */
 Void uartTaskFxn(UArg arg0, UArg arg1)
@@ -125,13 +132,14 @@ Void uartTaskFxn(UArg arg0, UArg arg1)
     // UART-kirjaston asetukset
     UART_Handle uart;
     UART_Params uartParams;
+    char inputMessage[20];
 
     // Alustetaan sarjaliikenne
     UART_Params_init(&uartParams);
     uartParams.writeDataMode = UART_DATA_TEXT;
     uartParams.readDataMode = UART_DATA_TEXT;
     uartParams.readEcho = UART_ECHO_OFF;
-    uartParams.readMode = UART_MODE_BLOCKING;
+    uartParams.readMode = UART_MODE_CALLBACK;
     uartParams.baudRate = 9600; // nopeus 9600baud
     uartParams.dataLength = UART_LEN_8; // 8
     uartParams.parityType = UART_PAR_NONE; // n
@@ -144,17 +152,16 @@ Void uartTaskFxn(UArg arg0, UArg arg1)
         System_abort("Error opening the UART");
     }
 
+    void UART_setCallBack(uart, uartCallBack);
+    UART_read(uart, inputMessage, sizeof(inputMessage));
+
     while (1)
     {
 
-        // Kun tila on oikea, tulosta sensoridata merkkijonossa debug-ikkunaan. Muista tilamuutos
+        // Kun tila on oikea niin tulostetaan terminaaliin.
         if (myState == UPDATE)
         {
-
-            // Tulos terminaaliin
             UART_write(uart, input, strlen(input));
-
-            // Odotus tilaan
             myState = READ_SENSOR;
         }
 
