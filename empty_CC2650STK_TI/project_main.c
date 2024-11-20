@@ -8,7 +8,6 @@
 #include <xdc/runtime/System.h>
 
 /* BIOS Header files */
-
 #include <ti/sysbios/BIOS.h>
 #include <ti/sysbios/knl/Clock.h>
 #include <ti/sysbios/knl/Task.h>
@@ -38,6 +37,9 @@ float ax, ay, az, gx, gy, gz;
 float thresholdVaaka = 0.7;
 float thresholdPysty = 1.5;
 char input[10];
+
+// UART Bufferi
+uint8_t uartBuffer[30];
 
 //painonappien ja ledien RTOS-muuttujat ja alustus
 static PIN_Handle buttonHandle;
@@ -106,7 +108,7 @@ void button2Fxn(PIN_Handle handle, PIN_Id pinId)
 {
     if (myState == READ_SENSOR)
     {
-        printf(" Väli\n");                              // Konsoliin tulostus, jotta debug helpompaa.
+        printf(" \n");                              // Konsoliin tulostus, jotta debug helpompaa.
         snprintf(input, sizeof(input), " \r\n\0");
         System_flush();
         myState = UPDATE;
@@ -114,25 +116,26 @@ void button2Fxn(PIN_Handle handle, PIN_Id pinId)
     }
 }
 
-// Funktio, joka tulostaa viestin konsoliin
-void uartCallBack(UART_Handle handle, void *rxBuf, size_t size)
+// Käsittelijäfunktio, joka tulostaa viestin konsoliin
+static void uartFxn(UART_Handle handle, void *rxBuf, size_t len)
 {
-    if (size > 0)
-    {
-        printf("Saatu: %s\n", (char *)rxBuf);
-        System_flush();
-    }
+    // Muutetaan vastaanotettu data merkkijonoksi
+    char *data = (char *)rxBuf;
+
+    // Tulostetaan vastaanotettu data konsoliin
+    printf("Vastaanotettu: %s\n", data);
+    System_flush();
+
+    UART_read(handle, rxBuf, 1);
 }
 
 /* Task Functions */
 Void uartTaskFxn(UArg arg0, UArg arg1)
 {
-
     // UARTin alustus
     // UART-kirjaston asetukset
     UART_Handle uart;
     UART_Params uartParams;
-    char inputMessage[20];
 
     // Alustetaan sarjaliikenne
     UART_Params_init(&uartParams);
@@ -140,6 +143,7 @@ Void uartTaskFxn(UArg arg0, UArg arg1)
     uartParams.readDataMode = UART_DATA_TEXT;
     uartParams.readEcho = UART_ECHO_OFF;
     uartParams.readMode = UART_MODE_CALLBACK;
+    uartParams.readCallback = &uartFxn;
     uartParams.baudRate = 9600; // nopeus 9600baud
     uartParams.dataLength = UART_LEN_8; // 8
     uartParams.parityType = UART_PAR_NONE; // n
@@ -152,8 +156,7 @@ Void uartTaskFxn(UArg arg0, UArg arg1)
         System_abort("Error opening the UART");
     }
 
-    void UART_setCallBack(uart, uartCallBack);
-    UART_read(uart, inputMessage, sizeof(inputMessage));
+    UART_read(uart, uartBuffer, 1);
 
     while (1)
     {
@@ -215,7 +218,6 @@ Void sensorTaskFxn(UArg arg0, UArg arg1)
     {
         if (myState == READ_SENSOR)
         {
-
             mpu9250_get_data(&i2cMPU, &ax, &ay, &az, &gx, &gy, &gz);
 
             // Tarkista laitteen asento kiihtyvyysarvojen perusteella
@@ -223,27 +225,26 @@ Void sensorTaskFxn(UArg arg0, UArg arg1)
             {
                 if (fabs(ax) > thresholdVaaka && fabs(ay) < thresholdVaaka && fabs(az) < thresholdPysty)
                 {
-                    printf("- %.2f %.2f\n", ax, ay); // Tulostaa viivan
-                    snprintf(input, sizeof(input), "-\r\n\0");
+                    System_printf("-\n"); // Tulostaa viivan
                     System_flush();
+                    snprintf(input, sizeof(input), "-\r\n\0");
                     myState = UPDATE;
                 }
                 else if (fabs(ay) > thresholdVaaka && fabs(ax) < thresholdVaaka && fabs(az) < thresholdPysty)
                 {
-                    printf("- %.2f %.2f\n", ax, ay); // Tulostaa viivan
-                    snprintf(input, sizeof(input), "-\r\n\0");
+                    System_printf("-\n"); // Tulostaa viivan
                     System_flush();
+                    snprintf(input, sizeof(input), "-\r\n\0");
                     myState = UPDATE;
                 }
                 else if (fabs(az) >= thresholdPysty)
                 {
-                    printf(". %.2f\n", az); // Tulostaa pisteen
-                    snprintf(input, sizeof(input), ".\r\n\0");
+                    System_printf(".\n"); // Tulostaa pisteen
                     System_flush();
+                    snprintf(input, sizeof(input), ".\r\n\0");
                     myState = UPDATE;
                 }
             }
-
             else
             {
                 printf("Liikettä ei tunnistettu, yritä uudelleen! Tarkista anturin asento!\n");
