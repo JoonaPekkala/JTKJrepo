@@ -102,9 +102,6 @@ static const I2CCC26XX_I2CPinCfg i2cMPUCfg =
     .pinSCL = Board_I2C0_SCL1
 };
 
-//void delay(uint32_t milliseconds);  // Viivefunktion esittely
-
-
 // Vaihdetaan led-pinnin tilaa negaatiolla ja siirrytään lukemaan sensorin dataa READ_SENSOR tilassa
 void buttonFxn(PIN_Handle handle, PIN_Id pinId)
 {
@@ -151,24 +148,20 @@ static void uartFxn(UART_Handle handle, void *rxBuf, size_t len)
             // Turn on LED
             uint_t pin2Value = PIN_getOutputValue( Board_LED1 );
             PIN_setOutputValue( led2Handle, Board_LED1, Board_LED_ON );
-            Task_sleep(200000 / Clock_tickPeriod);
 
         } else if (*data == '-') {
 
             // Turn on LED
             uint_t pin2Value = PIN_getOutputValue( Board_LED1 );
             PIN_setOutputValue( led2Handle, Board_LED1, Board_LED_ON );
-            Task_sleep(600000 / Clock_tickPeriod);
         }
 
         // Turn off LED
-        //PIN_setOutputValue( led2Handle, Board_LED1, Board_LED_OFF );
+        PIN_setOutputValue( led2Handle, Board_LED1, Board_LED_OFF );
 
         // Wait between symbols
-        Task_sleep(400000 / Clock_tickPeriod);
 
     // Wait between letters
-    Task_sleep(600000 / Clock_tickPeriod);
 
     UART_read(handle, rxBuf, 1);
 }
