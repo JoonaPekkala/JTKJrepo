@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#include <stdbool.h>
+#include <stdint.h>
 
 /* XDCtools files */
 #include <xdc/std.h>
@@ -22,6 +24,12 @@
 /* Board Header files */
 #include "Board.h"
 #include "sensors/mpu9250.h"
+
+// Ledin välkytys pituudet
+//#define DOT_DURATION 20000   // Duration for a dot in milliseconds
+//#define DASH_DURATION 60000  // Duration for a dash in milliseconds
+//#define SYMBOL_GAP 20000     // Gap between dots and dashes
+//#define LETTER_GAP 60000     // Gap between letters
 
 /* Task */
 #define STACKSIZE 2048
@@ -47,7 +55,10 @@ static PIN_Handle button2Handle;
 static PIN_State buttonState;
 static PIN_State button2State;
 static PIN_Handle ledHandle;
+static PIN_Handle led2Handle;
 static PIN_State ledState;
+static PIN_State led2State;
+
 
 // MPU power pin global variables
 static PIN_Handle hMpuPin;
@@ -71,6 +82,12 @@ PIN_Config ledConfig[] =
    PIN_TERMINATE
 };
 
+PIN_Config led2Config[] =
+{
+ Board_LED1 | PIN_GPIO_OUTPUT_EN | PIN_GPIO_LOW | PIN_PUSHPULL | PIN_DRVSTR_MAX,
+    PIN_TERMINATE
+};
+
 // MPU power pin
 static PIN_Config MpuPinConfig[] =
 {
@@ -84,6 +101,9 @@ static const I2CCC26XX_I2CPinCfg i2cMPUCfg =
     .pinSDA = Board_I2C0_SDA1,
     .pinSCL = Board_I2C0_SCL1
 };
+
+//void delay(uint32_t milliseconds);  // Viivefunktion esittely
+
 
 // Vaihdetaan led-pinnin tilaa negaatiolla ja siirrytään lukemaan sensorin dataa READ_SENSOR tilassa
 void buttonFxn(PIN_Handle handle, PIN_Id pinId)
@@ -116,7 +136,7 @@ void button2Fxn(PIN_Handle handle, PIN_Id pinId)
     }
 }
 
-// Käsittelijäfunktio, joka tulostaa viestin konsoliin
+// Käsittelijäfunktio, joka tulostaa UARTin kautta saadun viestin konsoliin
 static void uartFxn(UART_Handle handle, void *rxBuf, size_t len)
 {
     // Muutetaan vastaanotettu data merkkijonoksi
@@ -125,6 +145,30 @@ static void uartFxn(UART_Handle handle, void *rxBuf, size_t len)
     // Tulostetaan vastaanotettu data konsoliin
     printf("Vastaanotettu: %s\n", data);
     System_flush();
+
+        if (*data == '.') {
+
+            // Turn on LED
+            uint_t pin2Value = PIN_getOutputValue( Board_LED1 );
+            PIN_setOutputValue( led2Handle, Board_LED1, Board_LED_ON );
+            Task_sleep(200000 / Clock_tickPeriod);
+
+        } else if (*data == '-') {
+
+            // Turn on LED
+            uint_t pin2Value = PIN_getOutputValue( Board_LED1 );
+            PIN_setOutputValue( led2Handle, Board_LED1, Board_LED_ON );
+            Task_sleep(600000 / Clock_tickPeriod);
+        }
+
+        // Turn off LED
+        //PIN_setOutputValue( led2Handle, Board_LED1, Board_LED_OFF );
+
+        // Wait between symbols
+        Task_sleep(400000 / Clock_tickPeriod);
+
+    // Wait between letters
+    Task_sleep(600000 / Clock_tickPeriod);
 
     UART_read(handle, rxBuf, 1);
 }
@@ -169,10 +213,9 @@ Void uartTaskFxn(UArg arg0, UArg arg1)
         }
 
         // Just for sanity check for exercise, you can comment this out
-        //System_printf("uartTask\n");
-        //System_flush();
+        // System_printf("uartTask\n");
+        // System_flush();
 
-        // Once per second, you can modify this
         Task_sleep(100000 / Clock_tickPeriod);
     }
 }
@@ -191,7 +234,7 @@ Void sensorTaskFxn(UArg arg0, UArg arg1)
     i2cMPUParams.custom = (uintptr_t)&i2cMPUCfg;
 
     // MPU power on
-    PIN_setOutputValue(hMpuPin,Board_MPU_POWER, Board_MPU_POWER_ON);
+    PIN_setOutputValue(hMpuPin, Board_MPU_POWER, Board_MPU_POWER_ON);
 
     // Wait 100ms for the MPU sensor to power up
     Task_sleep(100000 / Clock_tickPeriod);
@@ -200,7 +243,8 @@ Void sensorTaskFxn(UArg arg0, UArg arg1)
 
     // MPU open i2c
     i2cMPU = I2C_open(Board_I2C, &i2cMPUParams);
-    if (i2cMPU == NULL) {
+    if (i2cMPU == NULL)
+    {
         System_abort("Error Initializing I2CMPU\n");
     }
 
@@ -209,6 +253,7 @@ Void sensorTaskFxn(UArg arg0, UArg arg1)
     System_flush();
 
     Task_sleep(100000 / Clock_tickPeriod);
+
     mpu9250_setup(&i2cMPU);
 
     System_printf("MPU9250: Setup and calibration OK\n");
@@ -282,6 +327,13 @@ Int main(void)
     // Ledi käyttöön ohjelmassa
     ledHandle = PIN_open(&ledState, ledConfig);
     if(!ledHandle)
+    {
+       System_abort("Error initializing LED pin\n");
+    }
+
+    // Ledi käyttöön ohjelmassa
+    led2Handle = PIN_open(&led2State, led2Config);
+    if(!led2Handle)
     {
        System_abort("Error initializing LED pin\n");
     }
