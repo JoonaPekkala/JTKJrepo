@@ -25,12 +25,6 @@
 #include "Board.h"
 #include "sensors/mpu9250.h"
 
-// Ledin välkytys pituudet
-//#define DOT_DURATION 20000   // Duration for a dot in milliseconds
-//#define DASH_DURATION 60000  // Duration for a dash in milliseconds
-//#define SYMBOL_GAP 20000     // Gap between dots and dashes
-//#define LETTER_GAP 60000     // Gap between letters
-
 /* Task */
 #define STACKSIZE 2048
 Char sensorTaskStack[STACKSIZE];
@@ -48,6 +42,12 @@ char input[10];
 
 // UART Bufferi
 uint8_t uartBuffer[30];
+
+// Morsetuksen ajoitukset
+#define DOT_DURATION (200000 / Clock_tickPeriod)  // Pisteen ajoitus
+#define DASH_DURATION (3 * DOT_DURATION)          // Viiva = 3x piste
+#define SYMBOL_GAP (DOT_DURATION)                 // Symbolien väli
+#define SPACE_GAP (3 * DOT_DURATION)              // Välilyönnin ajoitus
 
 //painonappien ja ledien RTOS-muuttujat ja alustus
 static PIN_Handle buttonHandle;
@@ -117,6 +117,7 @@ void buttonFxn(PIN_Handle handle, PIN_Id pinId)
     {
         myState = IDLE;
     }
+
     Task_sleep(100000 / Clock_tickPeriod);
 }
 
@@ -126,43 +127,70 @@ void button2Fxn(PIN_Handle handle, PIN_Id pinId)
     if (myState == READ_SENSOR)
     {
         printf(" \n");                              // Konsoliin tulostus, jotta debug helpompaa.
-        snprintf(input, sizeof(input), " \r\n\0");
         System_flush();
+        input[0] = ' ';
+        input[1] = '\r';
+        input[2] = '\n';
+        input[3] = '\0';
         myState = UPDATE;
         Task_sleep(100000 / Clock_tickPeriod);
     }
 }
 
-// Käsittelijäfunktio, joka tulostaa UARTin kautta saadun viestin konsoliin
+// Käsittelijäfunktio, jossa käsitellään UARTin kautta tullut viesti
 static void uartFxn(UART_Handle handle, void *rxBuf, size_t len)
 {
     // Muutetaan vastaanotettu data merkkijonoksi
     char *data = (char *)rxBuf;
+    uint32_t startTick;
+    uint32_t endTick;
 
-    // Tulostetaan vastaanotettu data konsoliin
-    printf("Vastaanotettu: %s\n", data);
-    System_flush();
+    // Piste/lyhyt
+    if (data[0] == '.')
+    {
+        startTick = Clock_getTicks();
+        endTick = startTick + DOT_DURATION;
 
-        if (*data == '.') {
-
-            // Turn on LED
-            uint_t pin2Value = PIN_getOutputValue( Board_LED1 );
-            PIN_setOutputValue( led2Handle, Board_LED1, Board_LED_ON );
-
-        } else if (*data == '-') {
-
-            // Turn on LED
-            uint_t pin2Value = PIN_getOutputValue( Board_LED1 );
-            PIN_setOutputValue( led2Handle, Board_LED1, Board_LED_ON );
+        PIN_setOutputValue(led2Handle, Board_LED1, Board_LED_ON);
+        while(Clock_getTicks() < endTick)
+        {
+            // Tyhjä while looppi, että ledi palaa halutun ajan
         }
+        PIN_setOutputValue(led2Handle, Board_LED1, Board_LED_OFF);
+    }
 
-        // Turn off LED
-        PIN_setOutputValue( led2Handle, Board_LED1, Board_LED_OFF );
+    // Viiva/pitkä
+    else if (data[0] == '-')
+    {
+        startTick = Clock_getTicks();
+        endTick = startTick + DASH_DURATION;
 
-        // Wait between symbols
+        PIN_setOutputValue(led2Handle, Board_LED1, Board_LED_ON);
+        while(Clock_getTicks() < endTick)
+        {
+            // Tyhjä while looppi, että ledi palaa halutun ajan
+        }
+        PIN_setOutputValue(led2Handle, Board_LED1, Board_LED_OFF);
+    }
+    else if (data[0] == ' ')
+    {
+        startTick = Clock_getTicks();
+        endTick = startTick + SPACE_GAP;
+        while(Clock_getTicks() < endTick)
+        {
+            // Tyhjä while looppi, että välilyönnin aika on haluttu
+        }
+    }
 
-    // Wait between letters
+    // Merkkien välinen tauko
+    startTick = Clock_getTicks();
+    endTick = startTick + SYMBOL_GAP;
+    while(Clock_getTicks() < endTick)
+    {
+        // Tyhjä while looppi, että symbolien välinen aika on haluttu
+    }
 
+    // Valmiina vastaanottamaan uusi viesti
     UART_read(handle, rxBuf, 1);
 }
 
@@ -197,19 +225,14 @@ Void uartTaskFxn(UArg arg0, UArg arg1)
 
     while (1)
     {
-
-        // Kun tila on oikea niin tulostetaan terminaaliin.
+        // Lähetetään viesti vain, kun sensorista on saatu dataa
         if (myState == UPDATE)
         {
-            UART_write(uart, input, strlen(input));
-            myState = READ_SENSOR;
+            UART_write(uart, input, 4);
+            myState = READ_SENSOR;  // Vaihdetaan tila sensorin lukemiseen
         }
 
-        // Just for sanity check for exercise, you can comment this out
-        // System_printf("uartTask\n");
-        // System_flush();
-
-        Task_sleep(100000 / Clock_tickPeriod);
+        Task_sleep(100000 / Clock_tickPeriod);  // Pieni tauko
     }
 }
 
@@ -263,23 +286,35 @@ Void sensorTaskFxn(UArg arg0, UArg arg1)
             {
                 if (fabs(ax) > thresholdVaaka && fabs(ay) < thresholdVaaka && fabs(az) < thresholdPysty)
                 {
-                    System_printf("-\n"); // Tulostaa viivan
+                    // Lähetetään viiva morse-koodina
+                    System_printf("-\n"); // Tulostaa viivan bebuggausta varten
                     System_flush();
-                    snprintf(input, sizeof(input), "-\r\n\0");
+                    input[0] = '-';
+                    input[1] = '\r';
+                    input[2] = '\n';
+                    input[3] = '\0';
                     myState = UPDATE;
                 }
                 else if (fabs(ay) > thresholdVaaka && fabs(ax) < thresholdVaaka && fabs(az) < thresholdPysty)
                 {
-                    System_printf("-\n"); // Tulostaa viivan
+                    // Lähetetään viiva morse-koodina
+                    System_printf("-\n"); // Tulostaa viivan bebuggausta varten
                     System_flush();
-                    snprintf(input, sizeof(input), "-\r\n\0");
+                    input[0] = '-';
+                    input[1] = '\r';
+                    input[2] = '\n';
+                    input[3] = '\0';
                     myState = UPDATE;
                 }
                 else if (fabs(az) >= thresholdPysty)
                 {
-                    System_printf(".\n"); // Tulostaa pisteen
+                    // Lähetetään piste morse-koodina
+                    System_printf(".\n"); // Tulostaa pisteen bebuggausta varten
                     System_flush();
-                    snprintf(input, sizeof(input), ".\r\n\0");
+                    input[0] = '.';
+                    input[1] = '\r';
+                    input[2] = '\n';
+                    input[3] = '\0';
                     myState = UPDATE;
                 }
             }
@@ -288,12 +323,8 @@ Void sensorTaskFxn(UArg arg0, UArg arg1)
                 printf("Liikettä ei tunnistettu, yritä uudelleen! Tarkista anturin asento!\n");
                 System_flush();
             }
-
-            // Just for sanity check for exercise, you can comment this out
-            //System_printf("sensorTask\n");
-            //System_flush();
-
         }
+
         Task_sleep(100000 / Clock_tickPeriod);
     }
 }
