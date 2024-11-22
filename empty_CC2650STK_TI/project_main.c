@@ -44,10 +44,10 @@ char input[10];
 uint8_t uartBuffer[30];
 
 // Morsetuksen ajoitukset
-#define DOT_DURATION (200000 / Clock_tickPeriod)  // Pisteen ajoitus
-#define DASH_DURATION (3 * DOT_DURATION)          // Viiva = 3x piste
-#define SYMBOL_GAP (DOT_DURATION)                 // Symbolien väli
-#define SPACE_GAP (3 * DOT_DURATION)              // Välilyönnin ajoitus
+#define DOT_DURATION (200000 / Clock_tickPeriod)
+#define DASH_DURATION (3 * DOT_DURATION)
+#define SYMBOL_GAP (DOT_DURATION)
+#define SPACE_GAP (3 * DOT_DURATION)
 
 //painonappien ja ledien RTOS-muuttujat ja alustus
 static PIN_Handle buttonHandle;
@@ -108,7 +108,6 @@ void buttonFxn(PIN_Handle handle, PIN_Id pinId)
     uint_t pinValue = PIN_getOutputValue( Board_LED0 );
     pinValue = !pinValue;
     PIN_setOutputValue( ledHandle, Board_LED0, pinValue );
-
     if (myState == IDLE)
     {
     myState = READ_SENSOR;
@@ -172,6 +171,8 @@ static void uartFxn(UART_Handle handle, void *rxBuf, size_t len)
         }
         PIN_setOutputValue(led2Handle, Board_LED1, Board_LED_OFF);
     }
+
+    // Välilyönti
     else if (data[0] == ' ')
     {
         startTick = Clock_getTicks();
@@ -231,14 +232,12 @@ Void uartTaskFxn(UArg arg0, UArg arg1)
             UART_write(uart, input, 4);
             myState = READ_SENSOR;  // Vaihdetaan tila sensorin lukemiseen
         }
-
         Task_sleep(100000 / Clock_tickPeriod);  // Pieni tauko
     }
 }
 
 Void sensorTaskFxn(UArg arg0, UArg arg1)
 {
-
     //Alustetaan i2cMPU väylä taskille
     I2C_Handle      i2cMPU;
     I2C_Params      i2cMPUParams;
@@ -246,6 +245,7 @@ Void sensorTaskFxn(UArg arg0, UArg arg1)
     // i2cMPU väylä taskin käyttöön
     I2C_Params_init(&i2cMPUParams);
     i2cMPUParams.bitRate = I2C_400kHz;
+
     // Note the different configuration below
     i2cMPUParams.custom = (uintptr_t)&i2cMPUCfg;
 
@@ -267,11 +267,8 @@ Void sensorTaskFxn(UArg arg0, UArg arg1)
     // MPU setup and calibration
     System_printf("MPU9250: Setup and calibration...\n");
     System_flush();
-
     Task_sleep(100000 / Clock_tickPeriod);
-
     mpu9250_setup(&i2cMPU);
-
     System_printf("MPU9250: Setup and calibration OK\n");
     System_flush();
 
@@ -280,14 +277,12 @@ Void sensorTaskFxn(UArg arg0, UArg arg1)
         if (myState == READ_SENSOR)
         {
             mpu9250_get_data(&i2cMPU, &ax, &ay, &az, &gx, &gy, &gz);
-
-            // Tarkista laitteen asento kiihtyvyysarvojen perusteella
             if ((az > 0.5) || (az < -0.5))
             {
                 if (fabs(ax) > thresholdVaaka && fabs(ay) < thresholdVaaka && fabs(az) < thresholdPysty)
                 {
                     // Lähetetään viiva morse-koodina
-                    System_printf("-\n"); // Tulostaa viivan bebuggausta varten
+                    System_printf("-\n"); // Tulostaa viivan konsoliin bebuggausta varten
                     System_flush();
                     input[0] = '-';
                     input[1] = '\r';
@@ -298,7 +293,7 @@ Void sensorTaskFxn(UArg arg0, UArg arg1)
                 else if (fabs(ay) > thresholdVaaka && fabs(ax) < thresholdVaaka && fabs(az) < thresholdPysty)
                 {
                     // Lähetetään viiva morse-koodina
-                    System_printf("-\n"); // Tulostaa viivan bebuggausta varten
+                    System_printf("-\n"); // Tulostaa viivan konsoliin bebuggausta varten
                     System_flush();
                     input[0] = '-';
                     input[1] = '\r';
@@ -309,7 +304,7 @@ Void sensorTaskFxn(UArg arg0, UArg arg1)
                 else if (fabs(az) >= thresholdPysty)
                 {
                     // Lähetetään piste morse-koodina
-                    System_printf(".\n"); // Tulostaa pisteen bebuggausta varten
+                    System_printf(".\n"); // Tulostaa pisteen konsoliin bebuggausta varten
                     System_flush();
                     input[0] = '.';
                     input[1] = '\r';
@@ -324,15 +319,12 @@ Void sensorTaskFxn(UArg arg0, UArg arg1)
                 System_flush();
             }
         }
-
         Task_sleep(100000 / Clock_tickPeriod);
     }
 }
 
-
 Int main(void)
 {
-
     // Task variables
     Task_Handle sensorTaskHandle;
     Task_Params sensorTaskParams;
@@ -348,14 +340,14 @@ Int main(void)
     // UART käyttöön
     Board_initUART();
 
-    // Ledi käyttöön ohjelmassa
+    // Vihreä ledi käyttöön ohjelmassa
     ledHandle = PIN_open(&ledState, ledConfig);
     if(!ledHandle)
     {
        System_abort("Error initializing LED pin\n");
     }
 
-    // Ledi käyttöön ohjelmassa
+    // Punainen ledi käyttöön ohjelmassa
     led2Handle = PIN_open(&led2State, led2Config);
     if(!led2Handle)
     {
