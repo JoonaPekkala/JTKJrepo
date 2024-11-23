@@ -497,13 +497,11 @@ void MPU9250SelfTest(float * destination) // Should return percent deviation fro
 
 double mpu9250_get_data(I2C_Handle *i2cMPU, float *ax, float *ay, float *az, float *gx, float *gy, float *gz) {
 
-	uint8_t rawData[6]; // Register data
+	uint8_t rawData[6]; // Registerin data
 
-   	// Read register values into array rawData
+   	// Luetaan rekisteri arvot
 	readByte(ACCEL_XOUT_H, 6, rawData);
 
-	// JTKJ: Convert the 8-bit values (the _h and _l registers) in the array rawData into 16-bit values
-	// Oletetaan, että rawData sisältää rekisteriarvot lukemisen jälkeen, kuten kuvassa
 
 	// Akselitietojen tallentaminen 16-bittisiin muuttujin
 	int16_t nx = (int16_t)((rawData[0] << 8) | rawData[1]);
@@ -517,14 +515,13 @@ double mpu9250_get_data(I2C_Handle *i2cMPU, float *ax, float *ay, float *az, flo
 	int16_t mz = (int16_t)((rawData[4] << 8) | rawData[5]);
 
 	
-	// JTKJ: Convert the 16-bit register values into g 
-	//       Each nx, ny and nz below is represents the 16-bit values for each axis separately
+	// Muutetaan rekisterin bittiarvot g arvoiksi
 	*ax = (float)nx * aRes - accelBias[0];
 	*ay = (float)ny * aRes - accelBias[1];
 	*az = (float)nz * aRes - accelBias[2];
 
 
-	// JTKJ: Convert g values mx, my, mz into degrees per second
+	// Muutetaan g arvot asteiksi sekunneissa.
     *gx = (float)mx * gRes;
     *gy = (float)my * gRes;
     *gz = (float)mz * gRes;

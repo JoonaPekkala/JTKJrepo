@@ -1,9 +1,13 @@
+// TEKIJÄT: Joona-Oskari Pekkala, Veeti Pitkänen, Lauri Tamminen
+// Työssä on käytetty apuna ChatGPT tekoälyä. Jokainen tekoälyltä saatu vastaus on ihmisen tarkistama
+// ja jokainen siltä saatu vastaus on ymmärretty. Tekoälyltä saatua koodia ei ole käytetty suoraan meidän työssä,
+// vaan sitä on muokattu meidän työhön sopivaksi. Tekoälyn koodia on käytetty vain ideoimiseen.
+
+
 /* C Standard library */
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
-#include <stdbool.h>
-#include <stdint.h>
 
 /* XDCtools files */
 #include <xdc/std.h>
@@ -24,6 +28,7 @@
 /* Board Header files */
 #include "Board.h"
 #include "sensors/mpu9250.h"
+#include "buzzer.h"
 
 /* Task */
 #define STACKSIZE 2048
@@ -34,13 +39,15 @@ Char uartTaskStack[STACKSIZE];
 enum state { IDLE=1, READ_SENSOR, UPDATE };
 enum state myState = IDLE;
 
-// Globaalit muuttujat
+// Globaalit muuttujat ja liikkeiden raja-arvot
 float ax, ay, az, gx, gy, gz;
-float thresholdVaaka = 0.7;
+float thresholdVaaka = 0.5;
 float thresholdPysty = 1.5;
+
+// Lähetysksen bufferi
 char input[10];
 
-// UART Bufferi
+// UART vastaanottobufferi
 uint8_t uartBuffer[30];
 
 // Morsetuksen ajoitukset
@@ -49,7 +56,7 @@ uint8_t uartBuffer[30];
 #define SYMBOL_GAP (DOT_DURATION)
 #define SPACE_GAP (3 * DOT_DURATION)
 
-//painonappien ja ledien RTOS-muuttujat ja alustus
+//painonappien, kaiuttimen ja ledien RTOS-muuttujat ja alustus
 static PIN_Handle buttonHandle;
 static PIN_Handle button2Handle;
 static PIN_State buttonState;
@@ -58,12 +65,14 @@ static PIN_Handle ledHandle;
 static PIN_Handle led2Handle;
 static PIN_State ledState;
 static PIN_State led2State;
+static PIN_Handle buzzerHandle;
+static PIN_State buzzerState;
 
-
-// MPU power pin global variables
+// MPU pinnin muuttujat
 static PIN_Handle hMpuPin;
 static PIN_State  MpuPinState;
 
+// Ledien, nappien, kaiuttimen ja MPU pinnin configit
 PIN_Config buttonConfig[] =
 {
    Board_BUTTON0  | PIN_INPUT_EN | PIN_PULLUP | PIN_IRQ_NEGEDGE,
@@ -88,7 +97,12 @@ PIN_Config led2Config[] =
     PIN_TERMINATE
 };
 
-// MPU power pin
+PIN_Config buzzerConfig[] =
+{
+ Board_BUZZER | PIN_GPIO_OUTPUT_EN | PIN_GPIO_LOW | PIN_PUSHPULL | PIN_DRVSTR_MAX,
+    PIN_TERMINATE
+};
+
 static PIN_Config MpuPinConfig[] =
 {
     Board_MPU_POWER  | PIN_GPIO_OUTPUT_EN | PIN_GPIO_HIGH | PIN_PUSHPULL | PIN_DRVSTR_MAX,
@@ -116,7 +130,6 @@ void buttonFxn(PIN_Handle handle, PIN_Id pinId)
     {
         myState = IDLE;
     }
-
     Task_sleep(100000 / Clock_tickPeriod);
 }
 
@@ -125,7 +138,7 @@ void button2Fxn(PIN_Handle handle, PIN_Id pinId)
 {
     if (myState == READ_SENSOR)
     {
-        printf(" \n");                              // Konsoliin tulostus, jotta debug helpompaa.
+        printf(" \n");          // Konsoliin tulostus, jotta debug helpompaa.
         System_flush();
         input[0] = ' ';
         input[1] = '\r';
@@ -226,13 +239,19 @@ Void uartTaskFxn(UArg arg0, UArg arg1)
 
     while (1)
     {
-        // Lähetetään viesti vain, kun sensorista on saatu dataa
+        // Lähetetään viesti vain, kun sensorista on saatu dataa. Kaiutin soi lähetetyn merkin varmistamiseksi
         if (myState == UPDATE)
         {
             UART_write(uart, input, 4);
-            myState = READ_SENSOR;  // Vaihdetaan tila sensorin lukemiseen
+
+            buzzerOpen(buzzerHandle);
+            buzzerSetFrequency(2000);
+            Task_sleep(300000 / Clock_tickPeriod);
+            buzzerClose();
+
+            myState = READ_SENSOR;
         }
-        Task_sleep(100000 / Clock_tickPeriod);  // Pieni tauko
+        Task_sleep(100000 / Clock_tickPeriod);
     }
 }
 
@@ -289,6 +308,9 @@ Void sensorTaskFxn(UArg arg0, UArg arg1)
                     input[2] = '\n';
                     input[3] = '\0';
                     myState = UPDATE;
+
+                    // Viive, jotta sensorin kerkeää siirtämään lähtöpisteeseen
+                    Task_sleep(500000 / Clock_tickPeriod);
                 }
                 else if (fabs(ay) > thresholdVaaka && fabs(ax) < thresholdVaaka && fabs(az) < thresholdPysty)
                 {
@@ -300,6 +322,9 @@ Void sensorTaskFxn(UArg arg0, UArg arg1)
                     input[2] = '\n';
                     input[3] = '\0';
                     myState = UPDATE;
+
+                    // Viive, jotta sensorin kerkeää siirtämään lähtöpisteeseen
+                    Task_sleep(500000 / Clock_tickPeriod);
                 }
                 else if (fabs(az) >= thresholdPysty)
                 {
@@ -311,6 +336,9 @@ Void sensorTaskFxn(UArg arg0, UArg arg1)
                     input[2] = '\n';
                     input[3] = '\0';
                     myState = UPDATE;
+
+                    // Viive, jotta sensorin kerkeää siirtämään lähtöpisteeseen
+                    Task_sleep(500000 / Clock_tickPeriod);
                 }
             }
             else
@@ -378,6 +406,13 @@ Int main(void)
     if (PIN_registerIntCb(button2Handle, &button2Fxn) != 0)
     {
        System_abort("Error registering button callback function");
+    }
+
+    // Kaiutin mukaan ohjelmaan
+    buzzerHandle = PIN_open(&buzzerState, buzzerConfig);
+    if(!buzzerHandle)
+    {
+        System_abort("Error initializing buzzer pin\n");
     }
 
     // Open MPU power pin
